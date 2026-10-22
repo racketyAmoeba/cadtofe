@@ -1,0 +1,93 @@
+# cad2bdf configuration.  Every key shown is the default; delete what you don't change.
+# Units = the CAD file's units (mm for most STEP files); the BDF is written in the same units.
+
+[mesh]
+type = "shell"             # "shell": surface/midsurface geometry -> CTRIA3/CQUAD4 (or CTRIA6/CQUAD8)
+                           # "tet"  : solid geometry -> CTETRA (4 or 10 node)
+order = 1                  # 1 = linear, 2 = quadratic (mid-side nodes placed on the CAD geometry)
+target_size = 5.0          # maximum element edge length
+min_size = 0.5             # floor for local refinement; features smaller than this stay unresolved
+curvature_elements = 12    # minimum elements per full circle on curved geometry (0 = off)
+quad_mode = "none"         # shell only: "none" = all tria | "dominant" = quad-dominant | "all" = all quad
+use_skin = false           # shell type + SOLID input: mesh the solid's outer faces (NOT a midsurface!)
+length_scale = 1.0         # multiply coordinates on output (e.g. 1000 for m -> mm)
+
+[cad]
+heal = true                # OpenCASCADE shape healing: sew faces, fix small edges/faces, make solids
+heal_tolerance = 1e-3
+conformal = false          # fragment touching parts so interfaces share nodes (assemblies)
+target_unit = "MM"         # convert imported geometry to this unit ("" = leave as imported)
+
+[cleanup]
+merge_tolerance = 1e-5     # nodes closer than this are merged (0 = only report them)
+fix_orientation = true     # shells: consistent normals across each connected set of faces
+
+[iterate]
+max_iterations = 8
+shrink = 0.9               # global size factor per retry (compounds: 0.9, 0.81, ...)
+local_refine = true        # additionally refine around elements that violate a criterion
+
+[checks]                   # hard requirements that aren't per-element metrics
+orientation = true         # shell normals consistent across shared edges
+duplicate_nodes = true     # no coincident nodes after cleanup
+max_free_edges = -1        # shells: maximum allowed free edges (-1 = report only)
+
+[output]
+format = "large"           # "large" (16-char GRID fields, full precision) | "small" (8-char) | "free"
+deck = "full"              # "full" = SOL/CEND/BEGIN BULK/ENDDATA | "bulk" = bulk entries only (INCLUDE)
+title = "cad2bdf model"
+
+# ---- Per-element quality criteria -------------------------------------------------------
+# Each metric takes min and/or max (inclusive). Unlisted metrics are NOT enforced. Names are
+# validated: a typo is an error, never a silently skipped check. If you define a [quality.*]
+# table it REPLACES the default for that element kind, so what you write is exactly what is enforced.
+# NOTE: these values are generic placeholders - replace them with your program's criteria.
+#
+# tria: min_angle max_angle aspect skew area edge_min edge_max
+# quad: min_angle max_angle aspect skew taper warp jacobian area edge_min edge_max
+# tet : aspect collapse min_dihedral max_dihedral quality volume edge_min edge_max
+# any 2nd-order kind additionally: midnode_dev (mid-node offset from edge midpoint / edge length)
+
+[quality.tria]
+min_angle = { min = 30.0 }
+max_angle = { max = 120.0 }
+aspect    = { max = 3.0 }
+skew      = { max = 50.0 }
+midnode_dev = { max = 0.2 }
+
+[quality.quad]
+min_angle = { min = 45.0 }
+max_angle = { max = 135.0 }
+aspect    = { max = 3.0 }
+skew      = { max = 45.0 }
+taper     = { max = 0.5 }
+warp      = { max = 0.05 }
+jacobian  = { min = 0.6 }
+midnode_dev = { max = 0.2 }
+
+[quality.tet]
+aspect       = { max = 5.0 }
+collapse     = { min = 0.1 }
+min_dihedral = { min = 15.0 }
+max_dihedral = { max = 150.0 }
+quality      = { min = 0.2 }
+midnode_dev  = { max = 0.2 }
+
+# ---- Materials and properties -----------------------------------------------------------
+# Units below are tonne-mm-s (E in MPa, density in tonne/mm^3).  PLACEHOLDER values: the tool
+# warns loudly while these defaults are in use.  Rules are matched in order against the CAD
+# part name (STEP label, else SURF_<tag> / VOL_<tag>) with re.search; the first match wins.
+# Parts matching no rule are an error. Defining any [[property]] replaces this default.
+
+[[material]]
+id = 1
+name = "PLACEHOLDER_AL"
+E = 71700.0
+nu = 0.33
+rho = 2.81e-9
+
+[[property]]
+match = ".*"
+material = 1
+thickness = 1.0            # shells only
+placeholder = true
